@@ -21,12 +21,13 @@ export default function CalendarPage() {
   const [filterProject, setFilterProject] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("");
 
+  // Only show members who have tasks with due dates in the selected project
   const assignees = useMemo(() => {
+    const projectTasks = filterProject ? tasks.filter((t) => t.projectId === filterProject) : tasks;
     const names = new Set<string>();
-    tasks.forEach((t) => { if (t.assignee) names.add(t.assignee); });
-    teamMembers.forEach((m) => names.add(m.name));
+    projectTasks.forEach((t) => { if (t.assignee && t.dueDate) names.add(t.assignee); });
     return Array.from(names).sort();
-  }, [tasks, teamMembers]);
+  }, [tasks, filterProject]);
 
   const selectStyles = "px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]";
 
@@ -48,7 +49,7 @@ export default function CalendarPage() {
             <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>Today</Button>
           </div>
           <div className="flex-1" />
-          <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)} className={selectStyles}>
+          <select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setFilterAssignee(""); }} className={selectStyles}>
             <option value="">All Projects</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>

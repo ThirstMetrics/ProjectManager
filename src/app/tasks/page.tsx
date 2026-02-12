@@ -36,12 +36,13 @@ function TasksPageInner() {
   const [filterAssignee, setFilterAssignee] = useState("");
   const [search, setSearch] = useState("");
 
+  // Only show members relevant to the current project filter, and only those with tasks
   const assignees = useMemo(() => {
+    const projectTasks = filterProject ? tasks.filter((t) => t.projectId === filterProject) : tasks;
     const names = new Set<string>();
-    tasks.forEach((t) => { if (t.assignee) names.add(t.assignee); });
-    teamMembers.forEach((m) => names.add(m.name));
+    projectTasks.forEach((t) => { if (t.assignee) names.add(t.assignee); });
     return Array.from(names).sort();
-  }, [tasks, teamMembers]);
+  }, [tasks, filterProject]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -65,7 +66,7 @@ function TasksPageInner() {
             type="text" placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)}
             className="px-3 py-2 w-64 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           />
-          <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)} className={selectStyles}>
+          <select value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setFilterAssignee(""); }} className={selectStyles}>
             <option value="">All Projects</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
