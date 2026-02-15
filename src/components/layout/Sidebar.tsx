@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, FolderKanban, CheckSquare, Calendar, FileArchive, Bell, Settings, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAppStore } from "@/lib/store";
 import { useTheme } from "@/theme/ThemeProvider";
 import { cn } from "@/lib/utils";
@@ -20,8 +20,13 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const allProjects = useAppStore((s) => s.projects);
+
+  // Default collapsed on mobile (<1024px), expanded on desktop
+  useEffect(() => {
+    setCollapsed(window.innerWidth < 1024);
+  }, []);
   const projects = useMemo(() => allProjects.filter((p) => p.status === "active"), [allProjects]);
   const { theme } = useTheme();
 
