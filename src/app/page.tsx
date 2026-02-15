@@ -71,18 +71,20 @@ export default function DashboardPage() {
                 {recentTasks.map((t) => {
                   const project = projects.find((p) => p.id === t.projectId);
                   return (
-                    <div key={t.id} className="px-5 py-3 flex items-center gap-4 hover:bg-[var(--color-surface-hover)] transition-colors">
-                      <div className="w-1.5 h-8 rounded-full shrink-0" style={{ backgroundColor: project?.color || "var(--color-text-muted)" }} />
+                    <div key={t.id} className="px-4 py-3 flex items-start gap-3 hover:bg-[var(--color-surface-hover)] transition-colors">
+                      <div className="w-1 h-10 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: project?.color || "var(--color-text-muted)" }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{t.title}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{project?.name}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-xs text-[var(--color-text-muted)] truncate max-w-[120px]">{project?.name}</span>
+                          <Badge size="sm" variant={t.priority === "urgent" ? "danger" : t.priority === "high" ? "warning" : "default"}>
+                            {priorityConfig[t.priority].label}
+                          </Badge>
+                          <Badge size="sm" style={{ backgroundColor: statusConfig[t.status].bg, color: statusConfig[t.status].color }}>
+                            {statusConfig[t.status].label}
+                          </Badge>
+                        </div>
                       </div>
-                      <Badge variant={t.priority === "urgent" ? "danger" : t.priority === "high" ? "warning" : "default"}>
-                        {priorityConfig[t.priority].label}
-                      </Badge>
-                      <Badge style={{ backgroundColor: statusConfig[t.status].bg, color: statusConfig[t.status].color }}>
-                        {statusConfig[t.status].label}
-                      </Badge>
                     </div>
                   );
                 })}
@@ -124,15 +126,17 @@ export default function DashboardPage() {
               {tasks.filter((t) => t.approvalStatus === "pending").map((t) => {
                 const project = projects.find((p) => p.id === t.projectId);
                 return (
-                  <div key={t.id} className="px-5 py-3 flex items-center gap-4 hover:bg-[var(--color-surface-hover)] transition-colors">
-                    <div className="w-1.5 h-8 rounded-full shrink-0" style={{ backgroundColor: project?.color || "#f59e0b" }} />
+                  <div key={t.id} className="px-4 py-3 flex items-start gap-3 hover:bg-[var(--color-surface-hover)] transition-colors">
+                    <div className="w-1 h-10 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: project?.color || "#f59e0b" }} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{t.title}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        Awaiting <span className="font-semibold">{t.approver}</span> &middot; {project?.name}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs text-[var(--color-text-muted)]">
+                          Awaiting <span className="font-semibold">{t.approver}</span>
+                        </span>
+                        <Badge size="sm" variant="warning">Pending</Badge>
+                      </div>
                     </div>
-                    <Badge variant="warning">Pending</Badge>
                   </div>
                 );
               })}

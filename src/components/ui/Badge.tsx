@@ -11,15 +11,21 @@ const variants: Record<string, string> = {
   info: "bg-[#dbeafe] text-[#2563eb]",
 };
 
+const sizes: Record<string, string> = {
+  sm: "px-1.5 py-px text-[10px]",
+  md: "px-2 py-0.5 text-xs",
+};
+
 export function Badge({
-  children, variant = "default", style, className,
+  children, variant = "default", size = "md", style, className,
 }: {
-  children: React.ReactNode; variant?: keyof typeof variants; style?: React.CSSProperties; className?: string;
+  children: React.ReactNode; variant?: keyof typeof variants; size?: "sm" | "md"; style?: React.CSSProperties; className?: string;
 }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-full font-semibold whitespace-nowrap",
+        sizes[size],
         variants[variant] || variants.default,
         className
       )}
