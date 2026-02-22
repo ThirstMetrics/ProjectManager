@@ -9,7 +9,6 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 import {
   personnelClockConfig, issueSeverityConfig, issueStatusConfig,
   formatDateTime, relativeDate,
@@ -18,6 +17,7 @@ import {
   Clock, Play, Pause, Square, UserCheck, AlertTriangle,
   Plus, CheckCircle, Phone, Mail, AtSign,
 } from "lucide-react";
+import { TimelineView } from "./TimelineView";
 
 const inputClass = "w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]";
 
@@ -77,9 +77,6 @@ export function ExecutionPanel({
     setShowReportIssue(false);
   };
 
-  const sortedRoS = [...runOfShow].sort((a, b) => a.order - b.order);
-  const rosCompleted = sortedRoS.filter((r) => r.completed).length;
-
   const sectionButtons = [
     { key: "timeline" as const, label: "Run of Show", icon: Clock },
     { key: "clock" as const, label: "Personnel", icon: UserCheck },
@@ -110,44 +107,7 @@ export function ExecutionPanel({
 
       {/* Run of Show */}
       {section === "timeline" && (
-        <div className="space-y-3">
-          {sortedRoS.length > 0 && (
-            <div className="flex items-center gap-3 text-sm text-[var(--color-text-muted)]">
-              <span>{rosCompleted}/{sortedRoS.length} completed</span>
-              <div className="flex-1"><ProgressBar value={sortedRoS.length > 0 ? (rosCompleted / sortedRoS.length) * 100 : 0} /></div>
-            </div>
-          )}
-          {sortedRoS.length === 0 ? (
-            <p className="text-center py-8 text-[var(--color-text-muted)]">No run-of-show items yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {sortedRoS.map((item, idx) => (
-                <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
-                  {/* Timeline dot */}
-                  <div className="flex flex-col items-center mt-1">
-                    <button
-                      onClick={() => { if (!item.completed) store.completeRunOfShowItem(item.id); }}
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
-                        item.completed ? "bg-green-500 border-green-500 text-white" : "border-[var(--color-border)] hover:border-[var(--color-primary)]"
-                      }`}
-                    >
-                      {item.completed && <CheckCircle size={12} />}
-                    </button>
-                    {idx < sortedRoS.length - 1 && <div className="w-0.5 h-6 bg-[var(--color-border)] mt-1" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-[var(--color-primary)]">{item.time}{item.endTime ? `–${item.endTime}` : ""}</span>
-                      <span className={`font-medium text-sm ${item.completed ? "line-through text-[var(--color-text-muted)]" : "text-[var(--color-text-primary)]"}`}>{item.title}</span>
-                    </div>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{item.description}</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Responsible: {item.responsibleName}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <TimelineView activationId={activationId} runOfShow={runOfShow} />
       )}
 
       {/* Personnel Clock In/Out */}

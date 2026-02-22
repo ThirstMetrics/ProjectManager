@@ -1,23 +1,26 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "@/lib/store";
 import { AppShell } from "@/components/layout/AppShell";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
-import { activationPhaseConfig, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, activationPhaseConfig, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { VenueCard } from "@/components/activation/VenueCard";
+import { StakeholderList } from "@/components/activation/StakeholderList";
+import { PersonnelList } from "@/components/activation/PersonnelList";
+import { ChecklistPanel } from "@/components/activation/ChecklistPanel";
 import { ProductInventoryTable } from "@/components/activation/ProductInventoryTable";
 import { BudgetOverview } from "@/components/activation/BudgetOverview";
 import { DocumentList } from "@/components/activation/DocumentList";
 import { ExecutionPanel } from "@/components/activation/ExecutionPanel";
 import { ActivationReportPanel } from "@/components/activation/ActivationReportPanel";
+import { MediaGallery } from "@/components/activation/MediaGallery";
 import { ChatPanel } from "@/components/project/ChatPanel";
 
-type ActivationTab = "overview" | "venue" | "people" | "products" | "budget" | "documents" | "execution" | "report" | "chat";
+type ActivationTab = "overview" | "venue" | "people" | "products" | "budget" | "documents" | "execution" | "media" | "report" | "chat";
 
 const tabs: { key: ActivationTab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -27,6 +30,7 @@ const tabs: { key: ActivationTab; label: string }[] = [
   { key: "budget", label: "Budget" },
   { key: "documents", label: "Documents" },
   { key: "execution", label: "Execution" },
+  { key: "media", label: "Media" },
   { key: "report", label: "Report" },
   { key: "chat", label: "Chat" },
 ];
@@ -162,109 +166,20 @@ export default function ActivationDashboardClient() {
               </div>
             </div>
 
-            {/* Compliance Checklist Progress */}
-            {checklistTotal > 0 && (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-                <h3 className="font-semibold text-[var(--color-text-primary)] mb-3">Checklist Progress</h3>
-                <p className="text-sm text-[var(--color-text-muted)] mb-3">{checklistDone} of {checklistTotal} items complete</p>
-                <div className="space-y-2">
-                  {checklists.slice(0, 6).map((item) => (
-                    <div key={item.id} className="flex items-center gap-2 text-sm">
-                      <span className={cn("w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0", item.completed ? "bg-green-500 border-green-500 text-white" : "border-[var(--color-border)]")}>
-                        {item.completed && "✓"}
-                      </span>
-                      <span className={cn(item.completed ? "line-through text-[var(--color-text-muted)]" : "text-[var(--color-text-primary)]")}>{item.title}</span>
-                      {item.required && !item.completed && <Badge variant="danger" size="sm">Required</Badge>}
-                    </div>
-                  ))}
-                  {checklistTotal > 6 && <p className="text-xs text-[var(--color-text-muted)]">+{checklistTotal - 6} more items</p>}
-                </div>
-              </div>
-            )}
+            {/* Compliance Checklist */}
+            <ChecklistPanel activationId={activation.id} checklists={checklists} />
           </div>
         )}
 
         {activeTab === "venue" && (
-          <div className="text-sm text-[var(--color-text-muted)]">
-            {venue ? (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">{venue.name}</h3>
-                    <p className="text-[var(--color-text-muted)]">{venue.address}, {venue.city}, {venue.state} {venue.zip}</p>
-                  </div>
-                  <Badge style={{ backgroundColor: "#dcfce7", color: "#22c55e" }} size="sm">{venue.status.replace(/_/g, " ")}</Badge>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Contact</p><p className="text-[var(--color-text-primary)]">{venue.contactName} — {venue.contactEmail}</p></div>
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Capacity</p><p className="text-[var(--color-text-primary)]">{venue.capacity} guests</p></div>
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Type</p><p className="text-[var(--color-text-primary)] capitalize">{venue.venueType}</p></div>
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Booking Cost</p><p className="text-[var(--color-text-primary)]">{formatCurrency(venue.bookingCost)}</p></div>
-                </div>
-                {venue.walkthroughNotes && (
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Walkthrough Notes</p><p className="text-[var(--color-text-primary)] whitespace-pre-wrap">{venue.walkthroughNotes}</p></div>
-                )}
-                {venue.specialRequirements && (
-                  <div><p className="text-xs text-[var(--color-text-muted)] uppercase font-semibold mb-1">Special Requirements</p><p className="text-[var(--color-text-primary)]">{venue.specialRequirements}</p></div>
-                )}
-              </div>
-            ) : (
-              <p className="text-center py-12">No venue assigned yet.</p>
-            )}
-          </div>
+          <VenueCard activationId={activation.id} venue={venue} />
         )}
 
         {activeTab === "people" && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-semibold text-[var(--color-text-primary)] mb-3">Stakeholders ({stakeholders.length})</h3>
-              {stakeholders.length === 0 ? (
-                <p className="text-sm text-[var(--color-text-muted)]">No stakeholders added yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {stakeholders.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
-                      <div className="w-9 h-9 rounded-full bg-[var(--color-primary-light)] flex items-center justify-center text-xs font-bold text-[var(--color-primary)]">
-                        {s.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-[var(--color-text-primary)] truncate">{s.name}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{s.company} — {s.role}</p>
-                      </div>
-                      <Badge size="sm" variant={s.type === "brand" ? "primary" : s.type === "venue" ? "success" : s.type === "vendor" ? "warning" : "default"}>
-                        {s.type.replace(/_/g, " ")}
-                      </Badge>
-                      <Badge size="sm" style={{ backgroundColor: s.ndaStatus === "signed" ? "#dcfce7" : s.ndaStatus === "pending" ? "#fef3c7" : "#f1f5f9", color: s.ndaStatus === "signed" ? "#22c55e" : s.ndaStatus === "pending" ? "#f59e0b" : "#94a3b8" }}>
-                        NDA: {s.ndaStatus.replace(/_/g, " ")}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <h3 className="font-semibold text-[var(--color-text-primary)] mb-3">Personnel ({personnel.length})</h3>
-              {personnel.length === 0 ? (
-                <p className="text-sm text-[var(--color-text-muted)]">No personnel assigned yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {personnel.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
-                      <div className="w-9 h-9 rounded-full bg-[var(--color-secondary-light)] flex items-center justify-center text-xs font-bold text-[var(--color-secondary)]">
-                        {p.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-[var(--color-text-primary)] truncate">{p.name}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{p.role}</p>
-                      </div>
-                      <Badge size="sm" style={{ backgroundColor: p.productKnowledgeVerified ? "#dcfce7" : "#fee2e2", color: p.productKnowledgeVerified ? "#22c55e" : "#ef4444" }}>
-                        {p.productKnowledgeVerified ? `Verified (${p.productKnowledgeScore}%)` : "Not verified"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="space-y-8">
+            <StakeholderList activationId={activation.id} stakeholders={stakeholders} />
+            <div className="border-t border-[var(--color-border)]" />
+            <PersonnelList activationId={activation.id} personnel={personnel} />
           </div>
         )}
 
@@ -279,6 +194,9 @@ export default function ActivationDashboardClient() {
         )}
         {activeTab === "execution" && (
           <ExecutionPanel activationId={activation.id} personnel={personnel} runOfShow={runOfShow} leads={leads} issues={issues} />
+        )}
+        {activeTab === "media" && (
+          <MediaGallery activationId={activation.id} media={media} />
         )}
         {activeTab === "report" && (
           <ActivationReportPanel activation={activation} reports={reports} leads={leads} products={products} budgetItems={budgetItems} media={media} />

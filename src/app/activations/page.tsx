@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "@/lib/store";
 import { AppShell } from "@/components/layout/AppShell";
-import { Zap } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Zap, Plus } from "lucide-react";
 import Link from "next/link";
-import { formatDate, formatCurrency, activationPhaseConfig } from "@/lib/utils";
+import { formatDate, activationPhaseConfig } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
+import { NewActivationModal } from "@/components/activation/NewActivationModal";
 
 export default function ActivationsPage() {
   const allActivations = useAppStore((s) => s.activations);
   const activations = useMemo(() => allActivations, [allActivations]);
+  const [showCreate, setShowCreate] = useState(false);
 
   return (
     <AppShell title="Activations">
@@ -21,6 +24,9 @@ export default function ActivationsPage() {
             <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Activations</h1>
             <p className="text-sm text-[var(--color-text-muted)] mt-1">Manage brand activations and event campaigns</p>
           </div>
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
+            <Plus size={16} className="mr-1.5" /> New Activation
+          </Button>
         </div>
 
         {/* Grid */}
@@ -78,6 +84,9 @@ export default function ActivationsPage() {
             })}
           </div>
         )}
+
+        {/* Create Activation Modal */}
+        <NewActivationModal open={showCreate} onClose={() => setShowCreate(false)} />
       </div>
     </AppShell>
   );
