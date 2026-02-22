@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, CheckSquare, Calendar, FileArchive, Bell, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, FolderKanban, CheckSquare, Calendar, FileArchive, Bell, Settings, ChevronLeft, ChevronRight, Zap } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useAppStore } from "@/lib/store";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Projects", href: "/projects", icon: FolderKanban },
+  { label: "Activations", href: "/activations", icon: Zap },
   { label: "Tasks", href: "/tasks", icon: CheckSquare },
   { label: "Calendar", href: "/calendar", icon: Calendar },
   { label: "Files", href: "/files", icon: FileArchive },
@@ -22,12 +23,14 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(true);
   const allProjects = useAppStore((s) => s.projects);
+  const allActivations = useAppStore((s) => s.activations);
 
   // Default collapsed on mobile (<1024px), expanded on desktop
   useEffect(() => {
     setCollapsed(window.innerWidth < 1024);
   }, []);
   const projects = useMemo(() => allProjects.filter((p) => p.status === "active"), [allProjects]);
+  const activations = useMemo(() => allActivations.filter((a) => a.status !== "cancelled" && a.status !== "completed"), [allActivations]);
   const { theme } = useTheme();
 
   return (
@@ -84,6 +87,28 @@ export function Sidebar() {
             >
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
               <span className="truncate">{p.name}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* Activations */}
+      {!collapsed && activations.length > 0 && (
+        <div className="px-3 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider px-3 mb-2" style={{ color: "var(--color-sidebar-text)", opacity: 0.6 }}>
+            Activations
+          </p>
+          {activations.slice(0, 5).map((a) => (
+            <Link
+              key={a.id}
+              href={`/activations/${a.id}`}
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm no-underline transition-colors"
+              style={{ color: "var(--color-sidebar-text)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--color-sidebar-hover)"; e.currentTarget.style.color = "var(--color-sidebar-text-active)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "var(--color-sidebar-text)"; }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
+              <span className="truncate">{a.name}</span>
             </Link>
           ))}
         </div>

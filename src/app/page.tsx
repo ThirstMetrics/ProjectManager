@@ -5,14 +5,17 @@ import { useAppStore } from "@/lib/store";
 import { Card, CardBody } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/Badge";
-import { FolderKanban, CheckSquare, AlertTriangle, TrendingUp, Clock, ArrowRight, ShieldCheck } from "lucide-react";
+import { FolderKanban, CheckSquare, AlertTriangle, TrendingUp, Clock, ArrowRight, ShieldCheck, Zap } from "lucide-react";
 import { format } from "date-fns";
-import { dueDateLabel, isOverdue, isDueSoon, priorityConfig, statusConfig } from "@/lib/utils";
+import { dueDateLabel, isOverdue, isDueSoon, priorityConfig, statusConfig, activationPhaseConfig, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+import { useMemo } from "react";
 
 export default function DashboardPage() {
   const projects = useAppStore((s) => s.projects);
   const tasks = useAppStore((s) => s.tasks);
+  const allActivations = useAppStore((s) => s.activations);
+  const activations = useMemo(() => allActivations, [allActivations]);
 
   const activeTasks = tasks.filter((t) => t.status !== "done");
   const overdueTasks = tasks.filter((t) => t.status !== "done" && isOverdue(t.dueDate));
@@ -23,10 +26,12 @@ export default function DashboardPage() {
     .slice(0, 5);
   const recentTasks = [...tasks].sort((a, b) => (a.updatedAt > b.updatedAt ? -1 : 1)).slice(0, 5);
 
+  const activeActivations = activations.filter((a) => a.phase !== "closed");
+
   const stats = [
     { label: "Total Projects", value: projects.length, icon: FolderKanban, color: "var(--color-primary)" },
     { label: "Active Tasks", value: activeTasks.length, icon: CheckSquare, color: "var(--color-secondary)" },
-    { label: "Overdue", value: overdueTasks.length, icon: AlertTriangle, color: "var(--color-danger)" },
+    { label: "Activations", value: activeActivations.length, icon: Zap, color: "#8b5cf6" },
     { label: "Completed", value: completedTasks.length, icon: TrendingUp, color: "var(--color-success)" },
   ];
 
@@ -142,6 +147,49 @@ export default function DashboardPage() {
               })}
             </div>
           </Card>
+        )}
+
+        {/* Active Activations */}
+        {activeActivations.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+                <Zap size={18} style={{ color: "#8b5cf6" }} /> Active Activations
+              </h3>
+              <Link href="/activations" className="text-sm font-medium flex items-center gap-1 no-underline" style={{ color: "var(--color-primary)" }}>
+                View all <ArrowRight size={14} />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeActivations.slice(0, 3).map((a) => {
+                const phaseConf = activationPhaseConfig[a.phase];
+                const budgetPct = a.budgetTotal > 0 ? Math.round((a.budgetSpent / a.budgetTotal) * 100) : 0;
+                return (
+                  <Link
+                    key={a.id}
+                    href={`/activations/${a.id}`}
+                    className="block rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 no-underline transition-all hover:shadow-md hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
+                        <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase">{a.brand}</span>
+                      </div>
+                      <Badge style={{ backgroundColor: phaseConf.bg, color: phaseConf.color }} size="sm">{phaseConf.label}</Badge>
+                    </div>
+                    <h4 className="font-semibold text-sm text-[var(--color-text-primary)] truncate">{a.name}</h4>
+                    <div className="flex items-center justify-between mt-2 text-xs text-[var(--color-text-muted)]">
+                      <span>{format(new Date(a.eventDate), "MMM d, yyyy")}</span>
+                      <span>{formatCurrency(a.budgetTotal)} budget</span>
+                    </div>
+                    <div className="mt-2 h-1.5 rounded-full bg-[var(--color-border)]">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(budgetPct, 100)}%`, backgroundColor: a.color }} />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Project progress */}
