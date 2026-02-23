@@ -2,16 +2,25 @@
 
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useAppStore } from "@/lib/store";
 
 export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const hydrate = useAppStore((s) => s.hydrate);
+  const hydrated = useAppStore((s) => s._hydrated);
+  const hydrating = useAppStore((s) => s._hydrating);
 
-  if (!mounted) {
+  useEffect(() => { hydrate(); }, [hydrate]);
+
+  if (!hydrated) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ backgroundColor: "var(--color-background)" }}>
-        <div className="w-8 h-8 rounded-lg animate-pulse" style={{ backgroundColor: "var(--color-primary)" }} />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-lg animate-pulse" style={{ backgroundColor: "var(--color-primary)" }} />
+          {hydrating && (
+            <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Loading...</p>
+          )}
+        </div>
       </div>
     );
   }
