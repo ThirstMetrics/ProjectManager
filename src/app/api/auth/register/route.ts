@@ -3,30 +3,17 @@ import { hash } from "bcryptjs";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { validateBody, registerSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
+  const data = await validateBody(req, registerSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const body = await req.json();
-    const { name, email, password } = body;
-
-    if (!name || !email || !password) {
-      return NextResponse.json(
-        { error: "Name, email, and password are required" },
-        { status: 400 }
-      );
-    }
-
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
-        { status: 400 }
-      );
-    }
-
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .where(eq(schema.users.email, email.toLowerCase()))
+      .where(eq(schema.users.email, data.email.toLowerCase()))
       .limit(1);
 
     if (existing) {
@@ -36,14 +23,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hashedPassword = await hash(password, 12);
+    const hashedPassword = await hash(data.password, 12);
     const id = `user-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
     await db.insert(schema.users).values({
       id,
-      name,
-      email: email.toLowerCase(),
+      name: data.name,
+      email: data.email.toLowerCase(),
       password: hashedPassword,
       role: "member",
       createdAt: now,
@@ -51,7 +38,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { id, name, email: email.toLowerCase() },
+      { id, name: data.name, email: data.email.toLowerCase() },
       { status: 201 }
     );
   } catch (error) {

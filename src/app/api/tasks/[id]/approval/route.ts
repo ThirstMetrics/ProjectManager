@@ -3,23 +3,27 @@ import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { requireAuth } from "@/lib/auth-guard";
+import { validateBody, approvalRequestSchema, approvalDecisionSchema } from "@/lib/validation";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, approvalRequestSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
     const updated = await db
       .update(schema.tasks)
       .set({
         approvalRequired: true,
-        approver: body.approver,
+        approver: data.approver,
         approvalStatus: "pending",
         approvalRequestedAt: now,
         updatedAt: now,
@@ -48,18 +52,21 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, approvalDecisionSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
     const updated = await db
       .update(schema.tasks)
       .set({
-        approvalStatus: body.status,
-        approvalComment: body.comment,
+        approvalStatus: data.status,
+        approvalComment: data.comment || null,
         updatedAt: now,
       })
       .where(eq(schema.tasks.id, id))

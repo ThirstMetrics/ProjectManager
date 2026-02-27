@@ -1,14 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { requireAuth } from "@/lib/auth-guard";
+import { requireProjectAccess } from "@/lib/rbac";
+import { validateBody, taskCreateSchema } from "@/lib/validation";
 
 export async function GET() {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
-    const tasksList = await db.select().from(schema.tasks);
+    // Admins/owners see all tasks; others see tasks from their projects
+    if (ctx.globalRole === "owner" || ctx.globalRole === "admin") {
+      const tasksList = await db.select().from(schema.tasks);
+      return NextResponse.json(tasksList);
+    }
+
+    const memberships = await db
+      .select({ projectId: schema.teamMembers.projectId })
+      .from(schema.teamMembers)
+      .where(eq(schema.teamMembers.email, ctx.userEmail));
+
+    const projectIds = memberships.map((m) => m.projectId);
+    if (projectIds.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    const tasksList = await db
+      .select()
+      .from(schema.tasks)
+      .where(inArray(schema.tasks.projectId, projectIds));
+
     return NextResponse.json(tasksList);
   } catch (error) {
     console.error("Error fetching tasks:", error);
@@ -20,10 +42,15 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  // First validate body to get projectId
+  const data = await validateBody(req, taskCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  // Check project access (contributor+ can create tasks)
+  const result = await requireProjectAccess(data.projectId, "contributor");
+  if (result instanceof NextResponse) return result;
+
   try {
-    const body = await req.json();
     const id = `task-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
     const now = new Date().toISOString();
 
@@ -31,31 +58,31 @@ export async function POST(req: NextRequest) {
     const existingTasks = await db
       .select()
       .from(schema.tasks)
-      .where(eq(schema.tasks.projectId, body.projectId));
+      .where(eq(schema.tasks.projectId, data.projectId));
 
     const order = existingTasks.length;
 
     const taskData = {
       id,
-      projectId: body.projectId,
-      title: body.title,
-      description: body.description || "",
-      status: body.status || "backlog",
-      priority: body.priority || "medium",
-      assignee: body.assignee || null,
-      dueDate: body.dueDate || null,
-      startDate: body.startDate || null,
-      tags: body.tags || [],
-      subtasks: body.subtasks || [],
-      attachments: body.attachments || [],
-      approvalRequired: body.approvalRequired || false,
-      approver: body.approver || null,
-      approvalStatus: body.approvalStatus || "none",
-      approvalComment: body.approvalComment || null,
-      approvalRequestedAt: body.approvalRequestedAt || null,
+      projectId: data.projectId,
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      priority: data.priority,
+      assignee: data.assignee,
+      dueDate: data.dueDate,
+      startDate: data.startDate,
+      tags: data.tags,
+      subtasks: data.subtasks,
+      attachments: data.attachments,
+      approvalRequired: data.approvalRequired,
+      approver: data.approver,
+      approvalStatus: data.approvalStatus,
+      approvalComment: data.approvalComment,
+      approvalRequestedAt: data.approvalRequestedAt,
       createdAt: now,
       updatedAt: now,
-      completedAt: body.completedAt || null,
+      completedAt: data.completedAt,
       order,
     };
 

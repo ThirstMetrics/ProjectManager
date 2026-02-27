@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireProjectAccess } from "@/lib/rbac";
+import { validateBody, projectUpdateSchema } from "@/lib/validation";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireProjectAccess(id);
+  if (result instanceof NextResponse) return result;
   try {
-    const { id } = await params;
     const project = await db
       .select()
       .from(schema.projects)
@@ -38,21 +39,19 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
-    const now = new Date().toISOString();
+  const { id } = await params;
+  const result = await requireProjectAccess(id, "owner");
+  if (result instanceof NextResponse) return result;
 
-    const updateData = {
-      ...body,
-      updatedAt: now,
-    };
+  const data = await validateBody(req, projectUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
+    const now = new Date().toISOString();
 
     const updated = await db
       .update(schema.projects)
-      .set(updateData)
+      .set({ ...data, updatedAt: now })
       .where(eq(schema.projects.id, id))
       .returning();
 
@@ -77,11 +76,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
+  const { id } = await params;
+  const result = await requireProjectAccess(id, "owner");
+  if (result instanceof NextResponse) return result;
 
+  try {
     await db.delete(schema.projects).where(eq(schema.projects.id, id));
 
     return new NextResponse(null, { status: 204 });

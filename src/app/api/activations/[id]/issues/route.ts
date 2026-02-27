@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, issueCreateSchema, issueUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, issueCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const issueId = `issue-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,18 +22,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: issueId,
         activationId: id,
-        reportedBy: body.reportedBy || "system",
-        reportedByPersonnelId: body.reportedByPersonnelId || null,
-        category: body.category || "other",
-        severity: body.severity || "medium",
-        status: body.status || "open",
-        title: body.title || "New Issue",
-        description: body.description || "",
-        resolution: body.resolution || "",
-        resolvedBy: body.resolvedBy || null,
-        resolvedAt: body.resolvedAt || null,
-        escalatedTo: body.escalatedTo || null,
-        photos: body.photos || [],
+        reportedBy: data.reportedBy || "system",
+        reportedByPersonnelId: data.reportedByPersonnelId || null,
+        category: data.category || "other",
+        severity: data.severity || "medium",
+        status: data.status || "open",
+        title: data.title || "New Issue",
+        description: data.description || "",
+        resolution: data.resolution || "",
+        resolvedBy: data.resolvedBy || null,
+        resolvedAt: data.resolvedAt || null,
+        escalatedTo: data.escalatedTo || null,
+        photos: data.photos || [],
         createdAt: now,
         updatedAt: now,
       })
@@ -44,53 +47,85 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, issueUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Issue ID required in body" }, { status: 400 });
-    }
-
-    const updates: any = {
-      reportedBy: body.reportedBy !== undefined ? body.reportedBy : undefined,
-      reportedByPersonnelId: body.reportedByPersonnelId !== undefined ? body.reportedByPersonnelId : undefined,
-      category: body.category !== undefined ? body.category : undefined,
-      severity: body.severity !== undefined ? body.severity : undefined,
-      status: body.status !== undefined ? body.status : undefined,
-      title: body.title !== undefined ? body.title : undefined,
-      description: body.description !== undefined ? body.description : undefined,
-      resolution: body.resolution !== undefined ? body.resolution : undefined,
-      resolvedBy: body.resolvedBy !== undefined ? body.resolvedBy : undefined,
-      resolvedAt: body.resolvedAt !== undefined ? body.resolvedAt : undefined,
-      escalatedTo: body.escalatedTo !== undefined ? body.escalatedTo : undefined,
-      photos: body.photos !== undefined ? body.photos : undefined,
-      updatedAt: now,
-    };
-
     // Handle escalate special case
-    if (body.escalate === true) {
-      updates.status = "escalated";
-      updates.escalatedTo = body.escalatedTo || "management";
+    if (data.escalate === true) {
+      const updates = {
+        ...data,
+        status: "escalated" as const,
+        escalatedTo: data.escalatedTo || "management",
+        updatedAt: now,
+      };
+      // Remove control flags before sending to DB
+      const { escalate, resolve, ...dbUpdates } = updates;
+
+      const updated = await db
+        .update(schema.activationIssues)
+        .set(dbUpdates)
+        .where(
+          and(
+            eq(schema.activationIssues.id, data.id),
+            eq(schema.activationIssues.activationId, id)
+          )
+        )
+        .returning();
+
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "Issue not found" }, { status: 404 });
+      }
+
+      return NextResponse.json(updated[0]);
     }
 
     // Handle resolve special case
-    if (body.resolve === true) {
-      updates.status = "resolved";
-      updates.resolution = body.resolution || "";
-      updates.resolvedBy = body.resolvedBy || "system";
-      updates.resolvedAt = now;
+    if (data.resolve === true) {
+      const updates = {
+        ...data,
+        status: "resolved" as const,
+        resolution: data.resolution || "",
+        resolvedBy: data.resolvedBy || "system",
+        resolvedAt: now,
+        updatedAt: now,
+      };
+      // Remove control flags before sending to DB
+      const { escalate, resolve, ...dbUpdates } = updates;
+
+      const updated = await db
+        .update(schema.activationIssues)
+        .set(dbUpdates)
+        .where(
+          and(
+            eq(schema.activationIssues.id, data.id),
+            eq(schema.activationIssues.activationId, id)
+          )
+        )
+        .returning();
+
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "Issue not found" }, { status: 404 });
+      }
+
+      return NextResponse.json(updated[0]);
     }
+
+    // Normal update path
+    const { escalate, resolve, ...updates } = { ...data, updatedAt: now };
 
     const updated = await db
       .update(schema.activationIssues)
       .set(updates)
       .where(
         and(
-          eq(schema.activationIssues.id, body.id),
+          eq(schema.activationIssues.id, data.id),
           eq(schema.activationIssues.activationId, id)
         )
       )
@@ -108,21 +143,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Issue ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationIssues)
       .where(
         and(
-          eq(schema.activationIssues.id, body.id),
+          eq(schema.activationIssues.id, data.id),
           eq(schema.activationIssues.activationId, id)
         )
       );

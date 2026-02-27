@@ -3,10 +3,11 @@ import { requireAuth } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { desc } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import { validateBody, activityCreateSchema } from "@/lib/validation";
 
 export async function GET() {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const activityList = await db
       .select()
@@ -24,20 +25,23 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, activityCreateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const body = await req.json();
     const id = `al-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
     const now = new Date().toISOString();
 
     const activityData = {
       id,
-      projectId: body.projectId,
-      memberId: body.memberId,
-      memberName: body.memberName,
-      action: body.action,
-      target: body.target,
+      projectId: data.projectId,
+      memberId: data.memberId,
+      memberName: data.memberName,
+      action: data.action,
+      target: data.target,
       timestamp: now,
     };
 

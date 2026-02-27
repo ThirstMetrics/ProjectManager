@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, reportCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, reportCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const reportId = `rpt-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -62,8 +66,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: reportId,
         activationId: id,
-        title: `Report for ${activation.name}`,
-        summary: "",
+        title: data.title,
+        summary: data.summary,
         totalLeads,
         totalSamples,
         totalInteractions,
@@ -71,11 +75,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         costPerLead,
         costPerSample,
         costPerInteraction,
-        highlights: [],
-        challenges: [],
-        recommendations: [],
+        highlights: data.highlights,
+        challenges: data.challenges,
+        recommendations: data.recommendations,
         generatedAt: now,
-        generatedBy: "system",
+        generatedBy: data.generatedBy,
       })
       .returning();
 

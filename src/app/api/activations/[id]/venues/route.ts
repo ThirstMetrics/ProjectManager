@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, venueCreateSchema, venueUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, venueCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const venueId = `venue-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,22 +22,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: venueId,
         activationId: id,
-        name: body.name || "New Venue",
-        address: body.address || "",
-        city: body.city || "",
-        state: body.state || "",
-        zip: body.zip || "",
-        contactName: body.contactName || "",
-        contactEmail: body.contactEmail || "",
-        contactPhone: body.contactPhone || "",
-        venueType: body.venueType || "",
-        capacity: body.capacity || 0,
-        status: body.status || "identified",
-        walkthroughDate: body.walkthroughDate || null,
-        walkthroughNotes: body.walkthroughNotes || "",
-        bookingConfirmedAt: body.bookingConfirmedAt || null,
-        bookingCost: body.bookingCost || 0,
-        specialRequirements: body.specialRequirements || "",
+        name: data.name,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zip: data.zip,
+        contactName: data.contactName,
+        contactEmail: data.contactEmail,
+        contactPhone: data.contactPhone,
+        venueType: data.venueType,
+        capacity: data.capacity,
+        status: data.status,
+        walkthroughDate: data.walkthroughDate,
+        walkthroughNotes: data.walkthroughNotes,
+        bookingConfirmedAt: data.bookingConfirmedAt,
+        bookingCost: data.bookingCost,
+        specialRequirements: data.specialRequirements,
         createdAt: now,
         updatedAt: now,
       })
@@ -48,41 +51,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
-    const now = new Date().toISOString();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Venue ID required in body" }, { status: 400 });
-    }
+  const data = await validateBody(req, venueUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
+    const now = new Date().toISOString();
 
     const updated = await db
       .update(schema.activationVenues)
       .set({
-        name: body.name !== undefined ? body.name : undefined,
-        address: body.address !== undefined ? body.address : undefined,
-        city: body.city !== undefined ? body.city : undefined,
-        state: body.state !== undefined ? body.state : undefined,
-        zip: body.zip !== undefined ? body.zip : undefined,
-        contactName: body.contactName !== undefined ? body.contactName : undefined,
-        contactEmail: body.contactEmail !== undefined ? body.contactEmail : undefined,
-        contactPhone: body.contactPhone !== undefined ? body.contactPhone : undefined,
-        venueType: body.venueType !== undefined ? body.venueType : undefined,
-        capacity: body.capacity !== undefined ? body.capacity : undefined,
-        status: body.status !== undefined ? body.status : undefined,
-        walkthroughDate: body.walkthroughDate !== undefined ? body.walkthroughDate : undefined,
-        walkthroughNotes: body.walkthroughNotes !== undefined ? body.walkthroughNotes : undefined,
-        bookingConfirmedAt: body.bookingConfirmedAt !== undefined ? body.bookingConfirmedAt : undefined,
-        bookingCost: body.bookingCost !== undefined ? body.bookingCost : undefined,
-        specialRequirements: body.specialRequirements !== undefined ? body.specialRequirements : undefined,
+        ...data,
         updatedAt: now,
       })
       .where(
         and(
-          eq(schema.activationVenues.id, body.id),
+          eq(schema.activationVenues.id, data.id),
           eq(schema.activationVenues.activationId, id)
         )
       )
@@ -100,21 +87,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Venue ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationVenues)
       .where(
         and(
-          eq(schema.activationVenues.id, body.id),
+          eq(schema.activationVenues.id, data.id),
           eq(schema.activationVenues.activationId, id)
         )
       );

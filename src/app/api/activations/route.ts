@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
+import { requireRole } from "@/lib/rbac";
 import { db } from "@/db";
-import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import { validateBody, activationCreateSchema } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const activations = await db.select().from(schema.activations);
     return NextResponse.json(activations);
@@ -17,40 +18,41 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireRole("member");
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, activationCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const id = `act-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
-    // Create activation
     const newActivation = await db
       .insert(schema.activations)
       .values({
         id,
-        name: body.name || "New Activation",
-        brand: body.brand || "",
-        description: body.description || "",
-        color: body.color || "#f59e0b",
-        icon: body.icon || "Zap",
-        phase: body.phase || "planning",
-        status: body.status || "draft",
-        eventDate: body.eventDate || now,
-        eventEndDate: body.eventEndDate || null,
-        setupDate: body.setupDate || null,
-        teardownDate: body.teardownDate || null,
-        venueId: body.venueId || null,
-        budgetTotal: body.budgetTotal || 0,
-        budgetSpent: body.budgetSpent || 0,
-        leadGoal: body.leadGoal || 0,
-        sampleGoal: body.sampleGoal || 0,
-        interactionGoal: body.interactionGoal || 0,
-        tags: body.tags || [],
+        name: data.name,
+        brand: data.brand,
+        description: data.description,
+        color: data.color,
+        icon: data.icon,
+        phase: data.phase,
+        status: data.status,
+        eventDate: data.eventDate || now,
+        eventEndDate: data.eventEndDate,
+        setupDate: data.setupDate,
+        teardownDate: data.teardownDate,
+        venueId: data.venueId,
+        budgetTotal: data.budgetTotal,
+        budgetSpent: data.budgetSpent,
+        leadGoal: data.leadGoal,
+        sampleGoal: data.sampleGoal,
+        interactionGoal: data.interactionGoal,
+        tags: data.tags,
         createdAt: now,
         updatedAt: now,
-        createdBy: body.createdBy || "",
+        createdBy: data.createdBy || ctx.userEmail,
       })
       .returning();
 
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
         projectId: id,
         name: "general",
         description: "General discussion channel",
-        createdBy: body.createdBy || "",
+        createdBy: data.createdBy || ctx.userEmail,
         createdAt: now,
         isDefault: true,
       });

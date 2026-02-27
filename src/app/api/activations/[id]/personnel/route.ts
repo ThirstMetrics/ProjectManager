@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, personnelCreateSchema, personnelUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, personnelCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const personnelId = `pers-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,21 +22,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: personnelId,
         activationId: id,
-        stakeholderId: body.stakeholderId || null,
-        name: body.name || "New Personnel",
-        email: body.email || "",
-        phone: body.phone || "",
-        role: body.role || "",
-        clockStatus: body.clockStatus || "not_started",
-        clockInTime: body.clockInTime || null,
-        clockOutTime: body.clockOutTime || null,
-        breakStartTime: body.breakStartTime || null,
-        totalHoursWorked: body.totalHoursWorked || null,
-        hourlyRate: body.hourlyRate || 0,
-        productKnowledgeVerified: body.productKnowledgeVerified || false,
-        productKnowledgeVerifiedAt: body.productKnowledgeVerifiedAt || null,
-        productKnowledgeScore: body.productKnowledgeScore || null,
-        notes: body.notes || "",
+        stakeholderId: data.stakeholderId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        role: data.role,
+        clockStatus: data.clockStatus,
+        clockInTime: data.clockInTime,
+        clockOutTime: data.clockOutTime,
+        breakStartTime: data.breakStartTime,
+        totalHoursWorked: data.totalHoursWorked,
+        hourlyRate: data.hourlyRate,
+        productKnowledgeVerified: data.productKnowledgeVerified,
+        productKnowledgeVerifiedAt: data.productKnowledgeVerifiedAt,
+        productKnowledgeScore: data.productKnowledgeScore,
+        notes: data.notes,
         createdAt: now,
       })
       .returning();
@@ -46,40 +49,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, personnelUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Personnel ID required in body" }, { status: 400 });
-    }
-
-    const updates: any = {
-      stakeholderId: body.stakeholderId !== undefined ? body.stakeholderId : undefined,
-      name: body.name !== undefined ? body.name : undefined,
-      email: body.email !== undefined ? body.email : undefined,
-      phone: body.phone !== undefined ? body.phone : undefined,
-      role: body.role !== undefined ? body.role : undefined,
-      clockStatus: body.clockStatus !== undefined ? body.clockStatus : undefined,
-      clockInTime: body.clockInTime !== undefined ? body.clockInTime : undefined,
-      clockOutTime: body.clockOutTime !== undefined ? body.clockOutTime : undefined,
-      breakStartTime: body.breakStartTime !== undefined ? body.breakStartTime : undefined,
-      totalHoursWorked: body.totalHoursWorked !== undefined ? body.totalHoursWorked : undefined,
-      hourlyRate: body.hourlyRate !== undefined ? body.hourlyRate : undefined,
-      productKnowledgeVerified: body.productKnowledgeVerified !== undefined ? body.productKnowledgeVerified : undefined,
-      productKnowledgeVerifiedAt: body.productKnowledgeVerifiedAt !== undefined ? body.productKnowledgeVerifiedAt : undefined,
-      productKnowledgeScore: body.productKnowledgeScore !== undefined ? body.productKnowledgeScore : undefined,
-      notes: body.notes !== undefined ? body.notes : undefined,
-    };
-
     const updated = await db
       .update(schema.activationPersonnel)
-      .set(updates)
+      .set(data)
       .where(
         and(
-          eq(schema.activationPersonnel.id, body.id),
+          eq(schema.activationPersonnel.id, data.id),
           eq(schema.activationPersonnel.activationId, id)
         )
       )
@@ -97,21 +80,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Personnel ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationPersonnel)
       .where(
         and(
-          eq(schema.activationPersonnel.id, body.id),
+          eq(schema.activationPersonnel.id, data.id),
           eq(schema.activationPersonnel.activationId, id)
         )
       );

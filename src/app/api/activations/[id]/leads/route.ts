@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, leadCreateSchema, leadUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireLeadAccess: true });
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, leadCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const leadId = `lead-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,19 +22,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: leadId,
         activationId: id,
-        capturedBy: body.capturedBy || "system",
-        firstName: body.firstName || "",
-        lastName: body.lastName || "",
-        email: body.email || "",
-        phone: body.phone || "",
-        instagramHandle: body.instagramHandle || "",
-        xHandle: body.xHandle || "",
-        source: body.source || "walk_in",
-        consentGiven: body.consentGiven || false,
-        consentTimestamp: body.consentTimestamp || null,
-        consentText: body.consentText || "",
-        notes: body.notes || "",
-        tags: body.tags || [],
+        capturedBy: data.capturedBy,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        instagramHandle: data.instagramHandle,
+        xHandle: data.xHandle,
+        source: data.source,
+        consentGiven: data.consentGiven,
+        consentTimestamp: data.consentTimestamp,
+        consentText: data.consentText,
+        notes: data.notes,
+        tags: data.tags,
         capturedAt: now,
       })
       .returning();
@@ -44,36 +47,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireLeadAccess: true });
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, leadUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Lead ID required in body" }, { status: 400 });
-    }
-
     const updated = await db
       .update(schema.activationLeads)
-      .set({
-        capturedBy: body.capturedBy !== undefined ? body.capturedBy : undefined,
-        firstName: body.firstName !== undefined ? body.firstName : undefined,
-        lastName: body.lastName !== undefined ? body.lastName : undefined,
-        email: body.email !== undefined ? body.email : undefined,
-        phone: body.phone !== undefined ? body.phone : undefined,
-        instagramHandle: body.instagramHandle !== undefined ? body.instagramHandle : undefined,
-        xHandle: body.xHandle !== undefined ? body.xHandle : undefined,
-        source: body.source !== undefined ? body.source : undefined,
-        consentGiven: body.consentGiven !== undefined ? body.consentGiven : undefined,
-        consentTimestamp: body.consentTimestamp !== undefined ? body.consentTimestamp : undefined,
-        consentText: body.consentText !== undefined ? body.consentText : undefined,
-        notes: body.notes !== undefined ? body.notes : undefined,
-        tags: body.tags !== undefined ? body.tags : undefined,
-      })
+      .set(data)
       .where(
         and(
-          eq(schema.activationLeads.id, body.id),
+          eq(schema.activationLeads.id, data.id),
           eq(schema.activationLeads.activationId, id)
         )
       )
@@ -91,21 +78,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireLeadAccess: true });
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Lead ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationLeads)
       .where(
         and(
-          eq(schema.activationLeads.id, body.id),
+          eq(schema.activationLeads.id, data.id),
           eq(schema.activationLeads.activationId, id)
         )
       );

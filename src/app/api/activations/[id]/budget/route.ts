@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, budgetItemCreateSchema, budgetItemUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireBudgetAccess: true });
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, budgetItemCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const budgetId = `budget-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,16 +22,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: budgetId,
         activationId: id,
-        category: body.category || "miscellaneous",
-        description: body.description || "",
-        vendor: body.vendor || "",
-        estimatedAmount: body.estimatedAmount || 0,
-        actualAmount: body.actualAmount || null,
-        status: body.status || "estimated",
-        approvedBy: body.approvedBy || null,
-        approvedAt: body.approvedAt || null,
-        receiptUrl: body.receiptUrl || "",
-        notes: body.notes || "",
+        category: data.category,
+        description: data.description,
+        vendor: data.vendor,
+        estimatedAmount: data.estimatedAmount,
+        actualAmount: data.actualAmount,
+        status: data.status,
+        approvedBy: data.approvedBy,
+        approvedAt: data.approvedAt,
+        receiptUrl: data.receiptUrl,
+        notes: data.notes,
         createdAt: now,
         updatedAt: now,
       })
@@ -42,40 +45,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireBudgetAccess: true });
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, budgetItemUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Budget item ID required in body" }, { status: 400 });
-    }
-
     const updates: any = {
-      category: body.category !== undefined ? body.category : undefined,
-      description: body.description !== undefined ? body.description : undefined,
-      vendor: body.vendor !== undefined ? body.vendor : undefined,
-      estimatedAmount: body.estimatedAmount !== undefined ? body.estimatedAmount : undefined,
-      actualAmount: body.actualAmount !== undefined ? body.actualAmount : undefined,
-      status: body.status !== undefined ? body.status : undefined,
-      approvedBy: body.approvedBy !== undefined ? body.approvedBy : undefined,
-      approvedAt: body.approvedAt !== undefined ? body.approvedAt : undefined,
-      receiptUrl: body.receiptUrl !== undefined ? body.receiptUrl : undefined,
-      notes: body.notes !== undefined ? body.notes : undefined,
+      ...data,
       updatedAt: now,
     };
 
     // Handle approve special case
-    if (body.approve === true) {
+    if (data.approve === true) {
       updates.status = "approved";
-      updates.approvedBy = body.approvedBy || "system";
+      updates.approvedBy = data.approvedBy || "system";
       updates.approvedAt = now;
     }
 
     // Handle reject special case
-    if (body.reject === true) {
+    if (data.reject === true) {
       updates.status = "rejected";
     }
 
@@ -84,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .set(updates)
       .where(
         and(
-          eq(schema.activationBudgetItems.id, body.id),
+          eq(schema.activationBudgetItems.id, data.id),
           eq(schema.activationBudgetItems.activationId, id)
         )
       )
@@ -102,21 +95,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id, { requireBudgetAccess: true });
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Budget item ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationBudgetItems)
       .where(
         and(
-          eq(schema.activationBudgetItems.id, body.id),
+          eq(schema.activationBudgetItems.id, data.id),
           eq(schema.activationBudgetItems.activationId, id)
         )
       );

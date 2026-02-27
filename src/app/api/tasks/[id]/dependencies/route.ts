@@ -3,20 +3,24 @@ import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { requireAuth } from "@/lib/auth-guard";
+import { validateBody, dependencySchema } from "@/lib/validation";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, dependencySchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
 
     await db.insert(schema.taskDependencies).values({
       taskId: id,
-      dependsOnId: body.dependsOnId,
+      dependsOnId: data.dependsOnId,
     });
 
     return NextResponse.json(
@@ -36,18 +40,21 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, dependencySchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
 
     await db
       .delete(schema.taskDependencies)
       .where(
         and(
           eq(schema.taskDependencies.taskId, id),
-          eq(schema.taskDependencies.dependsOnId, body.dependsOnId)
+          eq(schema.taskDependencies.dependsOnId, data.dependsOnId)
         )
       );
 

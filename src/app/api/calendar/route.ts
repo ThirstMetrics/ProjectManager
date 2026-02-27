@@ -3,10 +3,11 @@ import { requireAuth } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import { validateBody, calendarEventCreateSchema, calendarEventUpdateSchema, calendarEventDeleteSchema } from "@/lib/validation";
 
 export async function GET() {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const eventsList = await db.select().from(schema.calendarEvents);
     return NextResponse.json(eventsList);
@@ -20,23 +21,26 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, calendarEventCreateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const body = await req.json();
     const id = `evt-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
 
     const eventData = {
       id,
-      projectId: body.projectId || null,
-      taskId: body.taskId || null,
-      title: body.title,
-      description: body.description || "",
-      start: body.start,
-      end: body.end,
-      allDay: body.allDay || false,
-      color: body.color || "#6366f1",
-      type: body.type || "event",
+      projectId: data.projectId,
+      taskId: data.taskId,
+      title: data.title,
+      description: data.description,
+      start: data.start,
+      end: data.end,
+      allDay: data.allDay,
+      color: data.color,
+      type: data.type,
     };
 
     const event = await db
@@ -55,15 +59,17 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, calendarEventUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const updated = await db
       .update(schema.calendarEvents)
-      .set(body)
-      .where(eq(schema.calendarEvents.id, body.id))
+      .set(data)
+      .where(eq(schema.calendarEvents.id, data.id))
       .returning();
 
     if (updated.length === 0) {
@@ -84,14 +90,16 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, calendarEventDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     await db
       .delete(schema.calendarEvents)
-      .where(eq(schema.calendarEvents.id, body.id));
+      .where(eq(schema.calendarEvents.id, data.id));
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

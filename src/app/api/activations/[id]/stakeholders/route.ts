@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, stakeholderCreateSchema, stakeholderUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, stakeholderCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const stakeholderId = `stk-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,21 +22,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: stakeholderId,
         activationId: id,
-        name: body.name || "New Stakeholder",
-        email: body.email || "",
-        phone: body.phone || "",
-        company: body.company || "",
-        type: body.type || "other",
-        role: body.role || "",
-        avatar: body.avatar || null,
-        ndaStatus: body.ndaStatus || "not_required",
-        ndaDocumentId: body.ndaDocumentId || null,
-        canViewBudget: body.canViewBudget || false,
-        canViewLeads: body.canViewLeads || false,
-        canViewAllDocuments: body.canViewAllDocuments || false,
-        notes: body.notes || "",
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        company: data.company,
+        type: data.type,
+        role: data.role,
+        avatar: data.avatar,
+        ndaStatus: data.ndaStatus,
+        ndaDocumentId: data.ndaDocumentId,
+        canViewBudget: data.canViewBudget,
+        canViewLeads: data.canViewLeads,
+        canViewAllDocuments: data.canViewAllDocuments,
+        notes: data.notes,
         invitedAt: now,
-        status: body.status || "invited",
+        status: data.status,
         createdAt: now,
       })
       .returning();
@@ -46,37 +49,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, stakeholderUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Stakeholder ID required in body" }, { status: 400 });
-    }
-
     const updated = await db
       .update(schema.activationStakeholders)
-      .set({
-        name: body.name !== undefined ? body.name : undefined,
-        email: body.email !== undefined ? body.email : undefined,
-        phone: body.phone !== undefined ? body.phone : undefined,
-        company: body.company !== undefined ? body.company : undefined,
-        type: body.type !== undefined ? body.type : undefined,
-        role: body.role !== undefined ? body.role : undefined,
-        avatar: body.avatar !== undefined ? body.avatar : undefined,
-        ndaStatus: body.ndaStatus !== undefined ? body.ndaStatus : undefined,
-        ndaDocumentId: body.ndaDocumentId !== undefined ? body.ndaDocumentId : undefined,
-        canViewBudget: body.canViewBudget !== undefined ? body.canViewBudget : undefined,
-        canViewLeads: body.canViewLeads !== undefined ? body.canViewLeads : undefined,
-        canViewAllDocuments: body.canViewAllDocuments !== undefined ? body.canViewAllDocuments : undefined,
-        notes: body.notes !== undefined ? body.notes : undefined,
-        status: body.status !== undefined ? body.status : undefined,
-      })
+      .set(data)
       .where(
         and(
-          eq(schema.activationStakeholders.id, body.id),
+          eq(schema.activationStakeholders.id, data.id),
           eq(schema.activationStakeholders.activationId, id)
         )
       )
@@ -94,21 +80,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Stakeholder ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationStakeholders)
       .where(
         and(
-          eq(schema.activationStakeholders.id, body.id),
+          eq(schema.activationStakeholders.id, data.id),
           eq(schema.activationStakeholders.activationId, id)
         )
       );

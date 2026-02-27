@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, productCreateSchema, productUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, productCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const productId = `prod-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,25 +22,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: productId,
         activationId: id,
-        name: body.name || "New Product",
-        sku: body.sku || "",
-        category: body.category || "",
-        quantityRequested: body.quantityRequested || 0,
-        quantityConfirmed: body.quantityConfirmed || 0,
-        quantityShipped: body.quantityShipped || 0,
-        quantityDelivered: body.quantityDelivered || 0,
-        quantityUsed: body.quantityUsed || 0,
-        quantityReturned: body.quantityReturned || 0,
-        quantityDamaged: body.quantityDamaged || 0,
-        unitCost: body.unitCost || 0,
-        status: body.status || "requested",
-        shippingTrackingNumber: body.shippingTrackingNumber || "",
-        shippingCarrier: body.shippingCarrier || "",
-        expectedDeliveryDate: body.expectedDeliveryDate || null,
-        deliveredAt: body.deliveredAt || null,
+        name: data.name,
+        sku: data.sku,
+        category: data.category,
+        quantityRequested: data.quantityRequested,
+        quantityConfirmed: data.quantityConfirmed,
+        quantityShipped: data.quantityShipped,
+        quantityDelivered: data.quantityDelivered,
+        quantityUsed: data.quantityUsed,
+        quantityReturned: data.quantityReturned,
+        quantityDamaged: data.quantityDamaged,
+        unitCost: data.unitCost,
+        status: data.status,
+        shippingTrackingNumber: data.shippingTrackingNumber,
+        shippingCarrier: data.shippingCarrier,
+        expectedDeliveryDate: data.expectedDeliveryDate,
+        deliveredAt: data.deliveredAt,
         reconciledAt: null,
         reconciledBy: null,
-        notes: body.notes || "",
+        notes: data.notes,
         createdAt: now,
         updatedAt: now,
       })
@@ -51,44 +54,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, productUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Product ID required in body" }, { status: 400 });
-    }
-
     const updates: any = {
-      name: body.name !== undefined ? body.name : undefined,
-      sku: body.sku !== undefined ? body.sku : undefined,
-      category: body.category !== undefined ? body.category : undefined,
-      quantityRequested: body.quantityRequested !== undefined ? body.quantityRequested : undefined,
-      quantityConfirmed: body.quantityConfirmed !== undefined ? body.quantityConfirmed : undefined,
-      quantityShipped: body.quantityShipped !== undefined ? body.quantityShipped : undefined,
-      quantityDelivered: body.quantityDelivered !== undefined ? body.quantityDelivered : undefined,
-      quantityUsed: body.quantityUsed !== undefined ? body.quantityUsed : undefined,
-      quantityReturned: body.quantityReturned !== undefined ? body.quantityReturned : undefined,
-      quantityDamaged: body.quantityDamaged !== undefined ? body.quantityDamaged : undefined,
-      unitCost: body.unitCost !== undefined ? body.unitCost : undefined,
-      status: body.status !== undefined ? body.status : undefined,
-      shippingTrackingNumber: body.shippingTrackingNumber !== undefined ? body.shippingTrackingNumber : undefined,
-      shippingCarrier: body.shippingCarrier !== undefined ? body.shippingCarrier : undefined,
-      expectedDeliveryDate: body.expectedDeliveryDate !== undefined ? body.expectedDeliveryDate : undefined,
-      deliveredAt: body.deliveredAt !== undefined ? body.deliveredAt : undefined,
-      notes: body.notes !== undefined ? body.notes : undefined,
+      ...data,
       updatedAt: now,
     };
 
     // Handle reconcile special case
-    if (body.reconcile === true) {
-      updates.quantityUsed = body.quantityUsed !== undefined ? body.quantityUsed : 0;
-      updates.quantityReturned = body.quantityReturned !== undefined ? body.quantityReturned : 0;
-      updates.quantityDamaged = body.quantityDamaged !== undefined ? body.quantityDamaged : 0;
-      updates.reconciledBy = body.reconciledBy || "system";
+    if (data.reconcile === true) {
+      updates.quantityUsed = data.quantityUsed !== undefined ? data.quantityUsed : 0;
+      updates.quantityReturned = data.quantityReturned !== undefined ? data.quantityReturned : 0;
+      updates.quantityDamaged = data.quantityDamaged !== undefined ? data.quantityDamaged : 0;
+      updates.reconciledBy = data.reconciledBy || "system";
       updates.reconciledAt = now;
       updates.status = "reconciled";
     }
@@ -98,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .set(updates)
       .where(
         and(
-          eq(schema.activationProducts.id, body.id),
+          eq(schema.activationProducts.id, data.id),
           eq(schema.activationProducts.activationId, id)
         )
       )
@@ -116,21 +102,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Product ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationProducts)
       .where(
         and(
-          eq(schema.activationProducts.id, body.id),
+          eq(schema.activationProducts.id, data.id),
           eq(schema.activationProducts.activationId, id)
         )
       );

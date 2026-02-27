@@ -3,10 +3,11 @@ import { requireAuth } from "@/lib/auth-guard";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import { validateBody, notificationCreateSchema, notificationUpdateSchema, deleteByIdSchema } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const url = new URL(req.url);
     const isPreferences = url.searchParams.get("preferences") === "true";
@@ -39,23 +40,26 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, notificationCreateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const body = await req.json();
     const id = `notif-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
     const now = new Date().toISOString();
 
     const notificationData = {
       id,
-      title: body.title,
-      message: body.message,
-      type: body.type || "info",
-      channel: body.channel || ["screen"],
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      channel: data.channel,
       read: false,
-      actionUrl: body.actionUrl || null,
-      projectId: body.projectId || null,
-      taskId: body.taskId || null,
+      actionUrl: data.actionUrl || null,
+      projectId: data.projectId,
+      taskId: data.taskId,
       createdAt: now,
     };
 
@@ -75,14 +79,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, notificationUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     // Handle preferences update
-    if (body.preferences === true) {
-      const prefUpdateData = { ...body };
+    if (data.preferences === true) {
+      const prefUpdateData = { ...data };
       delete prefUpdateData.preferences;
 
       const updated = await db
@@ -102,18 +108,18 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Handle markAllRead
-    if (body.markAllRead === true) {
+    if (data.markAllRead === true) {
       await db.update(schema.notifications).set({ read: true });
 
       return NextResponse.json({ message: "All notifications marked as read" });
     }
 
     // Handle single notification read
-    if (body.id && "read" in body) {
+    if (data.id && "read" in data) {
       const updated = await db
         .update(schema.notifications)
-        .set({ read: body.read })
-        .where(eq(schema.notifications.id, body.id))
+        .set({ read: data.read })
+        .where(eq(schema.notifications.id, data.id))
         .returning();
 
       if (updated.length === 0) {
@@ -140,14 +146,16 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, deleteByIdSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     await db
       .delete(schema.notifications)
-      .where(eq(schema.notifications.id, body.id));
+      .where(eq(schema.notifications.id, data.id));
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

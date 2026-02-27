@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, checklistCreateSchema, checklistUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, checklistCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const checklistId = `chk-${crypto.randomUUID().slice(0, 8)}`;
 
     const newChecklist = await db
@@ -18,15 +21,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: checklistId,
         activationId: id,
-        category: body.category || "setup",
-        title: body.title || "New Checklist Item",
-        description: body.description || "",
-        required: body.required || false,
-        completed: body.completed || false,
-        completedBy: body.completedBy || null,
-        completedAt: body.completedAt || null,
-        dueDate: body.dueDate || null,
-        order: body.order || 0,
+        category: data.category || "setup",
+        title: data.title || "New Checklist Item",
+        description: data.description || "",
+        required: data.required || false,
+        completed: data.completed || false,
+        completedBy: data.completedBy || null,
+        completedAt: data.completedAt || null,
+        dueDate: data.dueDate || null,
+        order: data.order || 0,
       })
       .returning();
 
@@ -38,50 +41,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, checklistUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
     const now = new Date().toISOString();
 
-    if (!body.id) {
-      return NextResponse.json({ error: "Checklist item ID required in body" }, { status: 400 });
-    }
-
-    const updates: any = {
-      category: body.category !== undefined ? body.category : undefined,
-      title: body.title !== undefined ? body.title : undefined,
-      description: body.description !== undefined ? body.description : undefined,
-      required: body.required !== undefined ? body.required : undefined,
-      completed: body.completed !== undefined ? body.completed : undefined,
-      completedBy: body.completedBy !== undefined ? body.completedBy : undefined,
-      completedAt: body.completedAt !== undefined ? body.completedAt : undefined,
-      dueDate: body.dueDate !== undefined ? body.dueDate : undefined,
-      order: body.order !== undefined ? body.order : undefined,
-    };
-
     // Handle toggle special case
-    if (body.toggle === true) {
-      const toggleValue = !body.completed; // Toggle based on current value in body
-      updates.completed = toggleValue;
-      if (toggleValue) {
-        // Toggling to true
-        updates.completedBy = body.completedBy || "system";
-        updates.completedAt = now;
-      } else {
-        // Toggling to false
-        updates.completedBy = null;
-        updates.completedAt = null;
+    if (data.toggle === true) {
+      const toggleValue = !data.completed; // Toggle based on current value in body
+      const updates = {
+        ...data,
+        completed: toggleValue,
+        completedBy: toggleValue ? (data.completedBy || "system") : null,
+        completedAt: toggleValue ? now : null,
+      };
+      // Remove control flag before sending to DB
+      const { toggle, ...dbUpdates } = updates;
+
+      const updated = await db
+        .update(schema.activationChecklists)
+        .set(dbUpdates)
+        .where(
+          and(
+            eq(schema.activationChecklists.id, data.id),
+            eq(schema.activationChecklists.activationId, id)
+          )
+        )
+        .returning();
+
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "Checklist item not found" }, { status: 404 });
       }
+
+      return NextResponse.json(updated[0]);
     }
+
+    // Normal update path
+    const { toggle, ...updates } = data;
 
     const updated = await db
       .update(schema.activationChecklists)
       .set(updates)
       .where(
         and(
-          eq(schema.activationChecklists.id, body.id),
+          eq(schema.activationChecklists.id, data.id),
           eq(schema.activationChecklists.activationId, id)
         )
       )
@@ -99,21 +107,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Checklist item ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationChecklists)
       .where(
         and(
-          eq(schema.activationChecklists.id, body.id),
+          eq(schema.activationChecklists.id, data.id),
           eq(schema.activationChecklists.activationId, id)
         )
       );

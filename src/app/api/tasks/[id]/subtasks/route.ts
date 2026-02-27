@@ -3,16 +3,20 @@ import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { requireAuth } from "@/lib/auth-guard";
+import { validateBody, subtaskCreateSchema, subtaskUpdateSchema } from "@/lib/validation";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, subtaskCreateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
 
     // Read current task
     const task = await db
@@ -31,7 +35,7 @@ export async function POST(
     const subtaskId = `st-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
     const newSubtask = {
       id: subtaskId,
-      title: body.title,
+      title: data.title,
       completed: false,
     };
 
@@ -61,11 +65,14 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, subtaskUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
     const { id } = await params;
-    const body = await req.json();
 
     // Read current task
     const task = await db
@@ -81,11 +88,10 @@ export async function PATCH(
     }
 
     const currentTask = task[0];
-    const subtaskId = body.subtaskId;
 
     // Toggle the completed boolean of the matching subtask
     const updatedSubtasks = currentTask.subtasks.map((st: any) =>
-      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+      st.id === data.id ? { ...st, completed: !st.completed } : st
     );
 
     const now = new Date().toISOString();

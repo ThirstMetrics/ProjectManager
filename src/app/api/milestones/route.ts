@@ -3,10 +3,11 @@ import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { requireAuth } from "@/lib/auth-guard";
+import { validateBody, milestoneCreateSchema, milestoneUpdateSchema, deleteByIdSchema } from "@/lib/validation";
 
 export async function GET() {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
   try {
     const milestonesList = await db.select().from(schema.milestones);
     return NextResponse.json(milestonesList);
@@ -20,18 +21,21 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  const data = await validateBody(req, milestoneCreateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const body = await req.json();
     const id = `ms-${crypto.getRandomValues(new Uint8Array(4)).reduce((acc, val) => acc + val.toString(16).padStart(2, "0"), "")}`;
 
     const milestoneData = {
       id,
-      projectId: body.projectId,
-      title: body.title,
-      dueDate: body.dueDate,
-      completed: body.completed || false,
+      projectId: data.projectId,
+      title: data.title,
+      dueDate: data.dueDate,
+      completed: data.completed,
     };
 
     const milestone = await db
@@ -50,20 +54,22 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
-    const updateData: any = { ...body };
+  const data = await validateBody(req, milestoneUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
+    const updateData: Record<string, unknown> = { ...data };
 
     // If completed field is not explicitly provided but this is a toggle request,
     // read current value and toggle it
-    if (!("completed" in body) && body.toggle) {
+    if (!("completed" in data) && data.toggle) {
       const current = await db
         .select()
         .from(schema.milestones)
-        .where(eq(schema.milestones.id, body.id));
+        .where(eq(schema.milestones.id, data.id));
 
       if (current.length === 0) {
         return NextResponse.json(
@@ -75,10 +81,13 @@ export async function PATCH(req: NextRequest) {
       updateData.completed = !current[0].completed;
     }
 
+    // Remove toggle from update data since it's not a DB field
+    delete updateData.toggle;
+
     const updated = await db
       .update(schema.milestones)
       .set(updateData)
-      .where(eq(schema.milestones.id, body.id))
+      .where(eq(schema.milestones.id, data.id))
       .returning();
 
     if (updated.length === 0) {
@@ -99,14 +108,16 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const body = await req.json();
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
 
+  const data = await validateBody(req, deleteByIdSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     await db
       .delete(schema.milestones)
-      .where(eq(schema.milestones.id, body.id));
+      .where(eq(schema.milestones.id, data.id));
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

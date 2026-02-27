@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eq, and } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireActivationAccess } from "@/lib/rbac";
+import { validateBody, mediaCreateSchema, mediaUpdateSchema, activationDeleteSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
-  try {
-    const { id } = await params;
-    const body = await req.json();
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
 
+  const data = await validateBody(req, mediaCreateSchema);
+  if (data instanceof NextResponse) return data;
+
+  try {
     const mediaId = `media-${crypto.randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
 
@@ -19,16 +22,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .values({
         id: mediaId,
         activationId: id,
-        type: body.type || "photo",
-        url: body.url || "",
-        thumbnailUrl: body.thumbnailUrl || "",
-        caption: body.caption || "",
-        takenBy: body.takenBy || "",
-        takenAt: body.takenAt || now,
-        tags: body.tags || [],
-        approved: body.approved || false,
-        approvedBy: body.approvedBy || null,
-        fileSize: body.fileSize || 0,
+        type: data.type || "photo",
+        url: data.url || "",
+        thumbnailUrl: data.thumbnailUrl || "",
+        caption: data.caption || "",
+        takenBy: data.takenBy || "",
+        takenAt: data.takenAt || now,
+        tags: data.tags || [],
+        approved: data.approved || false,
+        approvedBy: data.approvedBy || "",
+        fileSize: data.fileSize || 0,
       })
       .returning();
 
@@ -40,41 +43,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, mediaUpdateSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Media ID required in body" }, { status: 400 });
-    }
-
-    const updates: any = {
-      type: body.type !== undefined ? body.type : undefined,
-      url: body.url !== undefined ? body.url : undefined,
-      thumbnailUrl: body.thumbnailUrl !== undefined ? body.thumbnailUrl : undefined,
-      caption: body.caption !== undefined ? body.caption : undefined,
-      takenBy: body.takenBy !== undefined ? body.takenBy : undefined,
-      takenAt: body.takenAt !== undefined ? body.takenAt : undefined,
-      tags: body.tags !== undefined ? body.tags : undefined,
-      approved: body.approved !== undefined ? body.approved : undefined,
-      approvedBy: body.approvedBy !== undefined ? body.approvedBy : undefined,
-      fileSize: body.fileSize !== undefined ? body.fileSize : undefined,
-    };
-
     // Handle approve special case
-    if (body.approve === true) {
-      updates.approved = true;
-      updates.approvedBy = body.approvedBy || "system";
+    if (data.approve === true) {
+      const updates = {
+        ...data,
+        approved: true,
+        approvedBy: data.approvedBy || "system",
+      };
+      // Remove control flag before sending to DB
+      const { approve, ...dbUpdates } = updates;
+
+      const updated = await db
+        .update(schema.activationMedia)
+        .set(dbUpdates)
+        .where(
+          and(
+            eq(schema.activationMedia.id, data.id),
+            eq(schema.activationMedia.activationId, id)
+          )
+        )
+        .returning();
+
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "Media not found" }, { status: 404 });
+      }
+
+      return NextResponse.json(updated[0]);
     }
+
+    // Normal update path
+    const { approve, ...updates } = data;
 
     const updated = await db
       .update(schema.activationMedia)
       .set(updates)
       .where(
         and(
-          eq(schema.activationMedia.id, body.id),
+          eq(schema.activationMedia.id, data.id),
           eq(schema.activationMedia.activationId, id)
         )
       )
@@ -92,21 +105,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
-  if (session instanceof NextResponse) return session;
+  const { id } = await params;
+  const result = await requireActivationAccess(id);
+  if (result instanceof NextResponse) return result;
+
+  const data = await validateBody(req, activationDeleteSchema);
+  if (data instanceof NextResponse) return data;
+
   try {
-    const { id } = await params;
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: "Media ID required in body" }, { status: 400 });
-    }
-
     await db
       .delete(schema.activationMedia)
       .where(
         and(
-          eq(schema.activationMedia.id, body.id),
+          eq(schema.activationMedia.id, data.id),
           eq(schema.activationMedia.activationId, id)
         )
       );
