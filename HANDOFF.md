@@ -3,7 +3,7 @@
 ## Overview
 TaskFlow Pro is a full-featured project management web application built for ThirstMetrics. It handles software development projects, beverage brand activations, marketing campaigns, and general project management with Kanban boards, calendars, team chat, file management, and an approval workflow.
 
-**As of Feb 2026:** The app now has a full PostgreSQL persistence layer via Neon + Drizzle ORM. All data persists across page refreshes and deploys. Zustand remains as an optimistic client-side cache.
+**As of Feb 2026:** The app now has a full PostgreSQL persistence layer via Neon + Drizzle ORM, plus NextAuth.js v5 authentication with email/password login. All data persists across sessions. Zustand remains as an optimistic client-side cache.
 
 ## Tech Stack
 - **Framework:** Next.js 16.1.6 (App Router, Turbopack)
@@ -28,7 +28,7 @@ TaskFlow Pro is a full-featured project management web application built for Thi
 ## Repository
 - **GitHub:** https://github.com/ThirstMetrics/ProjectManager
 - **Auth:** Classic PAT token (stored in git remote URL)
-- **Branch:** `main` (11 commits) — Full platform with database persistence
+- **Branch:** `main` — Full platform with database persistence + authentication
 - **Local path:** `/Users/dev01m4/Claude_TaskManager/task-manager/`
 
 ## Deployments
@@ -42,14 +42,15 @@ TaskFlow Pro is a full-featured project management web application built for Thi
 ### Vercel Environment Variables
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | Neon PostgreSQL connection string (set in Vercel dashboard → Settings → Environment Variables) |
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `AUTH_SECRET` | NextAuth.js JWT signing secret (generated via `openssl rand -base64 32`) |
 
 ### Neon Database
 - **Provider:** Neon (serverless PostgreSQL)
 - **Region:** West US 3 (Azure)
 - **Dashboard:** https://console.neon.tech
 - **Connection string:** In `.env.local` (local) and Vercel env vars (production)
-- **Tables:** 25 tables across 7 schema files
+- **Tables:** 26 tables across 8 schema files (including `users` table for auth)
 - **Migrations:** `drizzle/` directory, applied via `npm run db:migrate`
 
 ## Git History
@@ -86,7 +87,7 @@ AppShell mount → GET /api/hydrate → fetch all 25 tables in parallel → popu
 ### Key Architecture Decisions
 1. **Optimistic updates:** Zustand mutates instantly for snappy UI. API call fires in background. On failure, Zustand rolls back and shows error toast.
 2. **Single hydration endpoint:** `/api/hydrate` loads ALL data in one request (projects, tasks, milestones, team, chat, calendar, files, notifications, activations + all sub-resources). This avoids waterfall fetches.
-3. **No authentication yet:** All API routes are open. Auth is the next major milestone.
+3. **Authentication:** NextAuth.js v5 with email/password credentials. JWT sessions (30-day expiry). Middleware redirects unauthenticated page requests to `/login`. All 30 API routes return 401 without a valid session.
 4. **String-mode timestamps:** All Drizzle timestamp columns use `mode: "string"` to return ISO strings, matching existing TypeScript interfaces.
 5. **JSONB for arrays:** Tags, subtasks, mentions, photos etc. stored as `jsonb` columns rather than separate tables.
 6. **Pivot tables:** Task dependencies (`task_dependencies`) and document visibility (`activation_document_visibility`) use proper many-to-many pivot tables.
@@ -97,10 +98,12 @@ AppShell mount → GET /api/hydrate → fetch all 25 tables in parallel → popu
 src/
 ├── app/
 │   ├── layout.tsx              # Root layout (Inter font, metadata, Providers)
-│   ├── providers.tsx           # ThemeProvider + Toaster wrapper
+│   ├── providers.tsx           # SessionProvider + ThemeProvider + Toaster
 │   ├── globals.css             # Tailwind imports + CSS variable definitions
 │   ├── page.tsx                # Dashboard (stats, charts, recent tasks, pending approvals)
-│   ├── api/                    # ★ NEW — 30 API route files
+│   ├── api/                    # 30 API route files (all requireAuth()-guarded)
+│   │   ├── auth/[...nextauth]/route.ts # NextAuth.js catch-all handler
+│   │   ├── auth/register/route.ts     # POST: user registration
 │   │   ├── hydrate/route.ts           # GET: fetch all data for app hydration
 │   │   ├── projects/route.ts          # GET, POST
 │   │   ├── projects/[id]/route.ts     # GET, PATCH, DELETE
@@ -132,6 +135,8 @@ src/
 │   │       ├── media/route.ts
 │   │       ├── run-of-show/route.ts
 │   │       └── reports/route.ts
+│   ├── login/page.tsx            # Standalone login page (no AppShell)
+│   ├── register/page.tsx         # Standalone registration page (no AppShell)
 │   ├── activations/
 │   │   ├── page.tsx            # Activation list with brand/phase/budget cards
 │   │   └── [id]/
@@ -162,7 +167,7 @@ src/
 │   ├── layout/
 │   │   ├── AppShell.tsx        # Main shell — calls hydrate() on mount, shows spinner until ready
 │   │   ├── Sidebar.tsx         # Collapsible nav + project/activation shortcuts
-│   │   └── TopBar.tsx          # Top bar with search, notifications bell, user menu
+│   │   └── TopBar.tsx          # Top bar with search, notifications bell, user menu (session-aware)
 │   ├── notifications/          # Notification list components
 │   ├── project/
 │   │   ├── ChatPanel.tsx       # Slack-style chat with channels, threads, @mentions
@@ -185,6 +190,7 @@ src/
 │   ├── seed.ts                 # Full database seeder (all demo data)
 │   └── schema/
 │       ├── index.ts            # Re-exports all schema files
+│       ├── auth.ts             # users (email/password auth)
 │       ├── core.ts             # projects, tasks, task_dependencies, milestones, team_members, activity_log
 │       ├── chat.ts             # chat_channels, chat_messages
 │       ├── calendar.ts         # calendar_events
@@ -192,22 +198,32 @@ src/
 │       ├── notifications.ts    # notifications, notification_preferences
 │       └── activations.ts      # activations + 13 child tables (all with cascade delete)
 ├── lib/
-│   ├── api-client.ts           # ★ NEW — Typed fetch wrapper (get/post/patch/delete)
+│   ├── auth.ts                 # NextAuth.js v5 config (credentials provider, JWT, callbacks)
+│   ├── auth-types.ts           # Session/JWT type augmentations
+│   ├── auth-guard.ts           # requireAuth() API route protection helper
+│   ├── api-client.ts           # Typed fetch wrapper (get/post/patch/delete) with 401 redirect
 │   ├── store.ts                # Zustand store (optimistic updates + API persistence)
 │   ├── types.ts                # All TypeScript interfaces
 │   └── utils.ts                # Formatters, cn(), status/priority configs
+├── middleware.ts                # Route protection (redirects unauthenticated to /login)
 └── theme/
     ├── theme.config.ts         # ThirstMetrics color palette, brand config
     └── ThemeProvider.tsx        # CSS variable injection from theme config
 
-drizzle/                        # ★ NEW — Migration files
+drizzle/                        # Migration files
 ├── 0000_fine_maximus.sql       # Initial migration (25 tables)
+├── 0001_sharp_doorman.sql      # Auth migration (users table)
 └── meta/                       # Drizzle Kit metadata
 
 drizzle.config.ts               # ★ NEW — Drizzle Kit configuration
 ```
 
-## Database Schema (25 tables)
+## Database Schema (26 tables)
+
+### Auth (`src/db/schema/auth.ts`)
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `users` | Authentication | id (varchar PK), name, email (unique), password (bcrypt hash), avatar, role (default "member") |
 
 ### Core (`src/db/schema/core.ts`)
 | Table | Purpose | Key Fields |
@@ -288,11 +304,18 @@ drizzle.config.ts               # ★ NEW — Drizzle Kit configuration
 15. **NDA E-Sign** — HTML5 Canvas signature (touch-enabled), consent checkbox, base64 storage
 16. **Privacy Scoping** — Documents scoped per stakeholder, "View As" dropdown for admin
 
-### Persistence Layer (NEW — Feb 2026)
-17. **Neon PostgreSQL** — 25 tables, full relational schema with cascade deletes
-18. **30 API Routes** — Full CRUD for all entities
+### Persistence Layer
+17. **Neon PostgreSQL** — 26 tables, full relational schema with cascade deletes
+18. **30 API Routes** — Full CRUD for all entities (all auth-guarded)
 19. **Optimistic Updates** — Instant UI with background API persistence and automatic rollback
 20. **Single-Request Hydration** — All data loaded in one `/api/hydrate` call on mount
+
+### Authentication (NEW — Feb 2026)
+21. **NextAuth.js v5** — Email/password credentials provider with JWT sessions (30-day expiry)
+22. **Login/Register Pages** — Standalone themed pages with validation
+23. **Middleware Route Protection** — Unauthenticated page requests redirect to `/login`
+24. **API Route Guards** — All 30 API routes return 401 without valid session
+25. **User Menu** — TopBar shows user initials + dropdown with sign out
 
 ## npm Scripts
 | Script | Command | Purpose |
@@ -315,14 +338,16 @@ drizzle.config.ts               # ★ NEW — Drizzle Kit configuration
 - **dotenv in scripts:** `drizzle.config.ts` and `seed.ts` use `config({ path: ".env.local" })` — NOT `import "dotenv/config"` (which reads `.env` only)
 - **Money in cents:** All monetary values stored as integers (cents). Display with `formatCurrency()`.
 - **Chat reuse for activations:** Activation ID goes into the `projectId` field on chat channels
+- **Middleware:** `src/middleware.ts` handles auth redirects. Next.js 16 warns this is deprecated in favor of "proxy" — migration may be needed in future Next.js versions.
+- **Auth cookies:** `authjs.session-token` (HTTP) / `__Secure-authjs.session-token` (HTTPS/production)
 
 ## What Does NOT Exist Yet (Remaining Gaps)
-1. **No authentication** — No login, no user sessions, no access control. All API routes are open.
-2. **No real file storage** — File "uploads" create metadata in DB, but no actual blob storage (Azure Blob, S3, etc.)
-3. **No real-time** — Chat is persisted but not real-time (no WebSocket/SSE). Requires page refresh to see other users' messages.
-4. **No drag-and-drop** — Kanban columns use click-to-move, not true DnD
-5. **No input validation** — API routes trust client input. Need server-side validation (zod).
-6. **No rate limiting** — API routes have no rate limiting or abuse prevention.
+1. **No real file storage** — File "uploads" create metadata in DB, but no actual blob storage (Azure Blob, S3, etc.)
+2. **No real-time** — Chat is persisted but not real-time (no WebSocket/SSE). Requires page refresh to see other users' messages.
+3. **No drag-and-drop** — Kanban columns use click-to-move, not true DnD
+4. **No input validation** — API routes trust client input. Need server-side validation (zod).
+5. **No rate limiting** — API routes have no rate limiting or abuse prevention.
+6. **No role-based access control** — Auth exists but all authenticated users have equal API access regardless of role.
 
 ## Bugs Fixed (for reference)
 | Bug | Root Cause | Fix |
@@ -338,6 +363,7 @@ drizzle.config.ts               # ★ NEW — Drizzle Kit configuration
 | Filter scoping (historical) | Assignee list not scoped | `useMemo` filters by project |
 
 ## Seed Data (in database)
+- **Admin user:** `admin@thirstmetrics.com` / `password123` (role: admin)
 - **3 projects:** Mobile App Redesign, Valentine's Champagne Activation, Q1 Marketing Push
 - **12 tasks** across projects with various statuses/priorities, including 2 in pending approval
 - **8 milestones** with due dates and statuses
@@ -361,9 +387,12 @@ drizzle.config.ts               # ★ NEW — Drizzle Kit configuration
 - [x] Verified production at https://task-manager-five-wine.vercel.app
 - [x] All activation module phases (1-8) complete
 - [x] Merged to main, pushed to GitHub
+- [x] NextAuth.js v5 authentication (email/password, JWT sessions)
+- [x] Login + Register pages, middleware protection, API guards on all 30 routes
+- [x] E2E tested locally + production (all tests pass)
+- [x] Deployed auth to Vercel with AUTH_SECRET env var
 
 ### Next Priorities
-- [ ] **Add authentication** — NextAuth.js, Clerk, or Azure AD
 - [ ] **Add server-side validation** — zod schemas for all API inputs
 - [ ] **Add real file storage** — Azure Blob Storage, S3, or Cloudflare R2
 - [ ] **Add real-time chat** — WebSocket or SSE for live message delivery
