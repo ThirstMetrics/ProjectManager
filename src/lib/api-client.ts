@@ -7,6 +7,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = "/login";
+      throw new Error("Session expired");
+    }
     const text = await res.text().catch(() => "Unknown error");
     throw new Error(`API ${method} ${url} failed (${res.status}): ${text}`);
   }

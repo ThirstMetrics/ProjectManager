@@ -2,6 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
+import { hash } from "bcryptjs";
 import * as schema from "./schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
@@ -19,6 +20,19 @@ const now = () => new Date().toISOString();
 
 async function seed() {
   console.log("Seeding database...");
+
+  // ---------- Admin User ----------
+  const adminPassword = await hash("password123", 12);
+  await db.insert(schema.users).values({
+    id: "user-admin",
+    name: "John Paddon",
+    email: "admin@thirstmetrics.com",
+    password: adminPassword,
+    role: "admin",
+    createdAt: now(),
+    updatedAt: now(),
+  }).onConflictDoNothing();
+  console.log("  Admin user inserted");
 
   // ---------- Projects ----------
   await db.insert(schema.projects).values([
